@@ -3,6 +3,7 @@ import time
 from qfluentwidgets import FluentIcon
 
 from ok import TriggerTask, Logger
+from src.combat.RotationExecutor import RotationExecutor
 from src.scene.WWScene import WWScene
 from src.task.BaseCombatTask import BaseCombatTask, NotInCombatException, CharDeadException
 
@@ -24,12 +25,18 @@ class AutoCombatTask(BaseCombatTask, TriggerTask):
             'Auto Target': True,
             'Use Liberation': True,
             'Check Levitator': True,
+            'Rotation Mode': False,
+            'Rotation': '',
         })
         self.config_description = {
             'Auto Target': 'Turn off to enable auto combat only when manually target enemy using middle click',
             'Use Liberation': 'Do not use Liberation in Open World to Save Time',
             'Check Levitator': 'Toggle the levitator and verify if the character is floating',
+            'Rotation Mode': 'Enable fixed rotation mode, execute predefined rotation instead of auto combat AI',
+            'Rotation': 'Rotation sequence, e.g. "1 e q lib 2 e a:1.2 lib 3 e ha:0.8 lib"  '
+                        '(1/2/3=switch char, e=skill, q=echo, lib=liberation, a=attack, ha=heavy, dodge, jump)',
         }
+        self.rotation_executor = None
         self.op_index = 0
 
     def run(self):
@@ -40,10 +47,22 @@ class AutoCombatTask(BaseCombatTask, TriggerTask):
         if not self.use_liberation and not self.in_world():  # 仅大世界生效
             self.use_liberation = True
         combat_start = time.time()
+        rotation_mode = self.config.get('Rotation Mode')
+        if rotation_mode:
+            rotation_str = self.config.get('Rotation', '')
+            if rotation_str:
+                if not self.rotation_executor or self.rotation_executor.rotation_str != rotation_str:
+                    self.rotation_executor = RotationExecutor(self, rotation_str)
+            else:
+                rotation_mode = False
+                logger.warning('Rotation Mode enabled but no rotation defined, falling back to auto combat')
         while self.in_combat():
             ret = True
             try:
-                self.get_current_char().perform()
+                if rotation_mode and self.rotation_executor:
+                    self.rotation_executor.execute_once()
+                else:
+                    self.get_current_char().perform()
             except CharDeadException:
                 self.log_error(f'Characters dead', notify=True)
                 break
