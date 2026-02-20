@@ -22,7 +22,7 @@ class CombatCheck(BaseWWTask):
         self.boss_lv_mask = None
         self._in_liberation = False  # return True
         self.has_count_down = False
-        self.sleep_check_interval = 0.3
+        self.sleep_check_interval = 0.1
         self.last_out_of_combat_time = 0
         self.boss_lv_box = None
         self.boss_health_box = None
@@ -136,7 +136,7 @@ class CombatCheck(BaseWWTask):
     def is_boss(self):
         return self.find_one('boss_break_shield') or self.find_one('boss_break_lock')
 
-    def in_combat(self, target=False):
+    def do_check_in_combat(self, target):
         if self.in_liberation or self.recent_liberation():
             return True
         if self._in_combat:
@@ -176,7 +176,16 @@ class CombatCheck(BaseWWTask):
                 self._in_combat = self.load_chars()
                 return self._in_combat
 
-    def ensure_levitator(self):
+    def in_combat(self, target=False):
+        self.in_sleep_check = True
+        try:
+            return self.do_check_in_combat(target)
+        except Exception as e:
+            logger.error(f'do_check_in_combat: {e}')
+        finally:
+            self.in_sleep_check = False
+
+    def ensure_levitator(self):  # 目前未使用
         if not self.config.get('Check Levitator', True):
             return True
         if levi := self.find_one('edge_levitator', threshold=0.6):
@@ -244,8 +253,8 @@ class CombatCheck(BaseWWTask):
     def has_target(self, double_check=False):
         threshold = 0.6
         has_name, no_name = self.get_target_names()
-
-        best = self.find_best_match_in_box(self.get_box_by_name(has_name).scale(1.1), [has_name, no_name],
+        scale = 1.2 if self.is_browser() else 1.1
+        best = self.find_best_match_in_box(self.get_box_by_name(has_name).scale(scale), [has_name, no_name],
                                            threshold=threshold)
         if not best:
             best = self.find_best_match_in_box(self.get_box_by_name('box_target_enemy_long'),
@@ -279,8 +288,13 @@ class CombatCheck(BaseWWTask):
                 return True
             else:
                 logger.info(f'target lost try retarget')
-                return self.wait_until(self.has_target, time_out=self.target_enemy_time_out,
-                                       pre_action=lambda: self.middle_click(interval=0.2))
+                start = time.time()
+                time_out = 1 if self.is_pick_f() else self.target_enemy_time_out
+                while time.time() - start < time_out:
+                    if self.has_target():
+                        return True
+                    self.middle_click(interval=0.1)
+                    self.sleep(0.01)
 
     def has_health_bar(self):
         if self._in_combat:

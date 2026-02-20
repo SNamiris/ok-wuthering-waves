@@ -10,8 +10,8 @@ from ok import CannotFindException
 import cv2
 
 logger = Logger.get_logger(__name__)
-number_re = re.compile(r'^(\d+)$')
-stamina_re = re.compile(r'^(\d+)/(\d+)$')
+number_re = re.compile(r'(\d+)')
+stamina_re = re.compile(r'(\d+)/(\d+)')
 f_white_color = {
     'r': (235, 255),  # Red range
     'g': (235, 255),  # Green range
@@ -392,16 +392,13 @@ class BaseWWTask(BaseTask):
         if not boxes:
             self.screenshot('stamina_error')
             return -1, -1, -1
-        current_box = find_boxes_by_name(boxes, stamina_re)
-        if current_box:
-            current = int(current_box[0].name.split('/')[0])
-        else:
-            current = 0
-        back_up_box = find_boxes_by_name(boxes, number_re)
-        if back_up_box:
-            back_up = int(back_up_box[0].name)
-        else:
-            back_up = 0
+        current = 0
+        back_up = 0
+        for box in boxes:
+            if match := stamina_re.search(box.name):
+                current = int(match.group(1))
+            elif match := number_re.search(box.name):
+                back_up = int(match.group(1))
         self.info_set('current_stamina', current)
         self.info_set('back_up_stamina', back_up)
         return current, back_up, current + back_up
@@ -667,6 +664,7 @@ class BaseWWTask(BaseTask):
         self.info_set('current task', f'wait main esc={esc}')
         if not self.wait_until(lambda: self.is_main(esc=esc), time_out=time_out, raise_if_not_found=False):
             raise Exception('Please start in game world and in team!')
+        self.sleep(0.5)
         self.info_set('current task', f'in main esc={esc}')
 
     def is_main(self, esc=True):
@@ -918,7 +916,7 @@ class BaseWWTask(BaseTask):
             self.send_key('f2', after_sleep=1)
             self.log_info('send f2 key to open the book')
         gray_book_boss = self.wait_book(feature)
-        self.sleep(0.5)
+        self.sleep(0.8)
         if not gray_book_boss:
             self.log_error("can't find gray_book_boss, make sure f2 is the hotkey for book", notify=True)
             raise Exception("can't find gray_book_boss, make sure f2 is the hotkey for book")
